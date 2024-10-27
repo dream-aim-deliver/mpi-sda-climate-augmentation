@@ -91,4 +91,33 @@ class FileRepository:
 
             if download_res.status_code != 200:
                 raise ValueError(f"Failed to download file from signed url: {download_res.text}")
+    
+    def public_image_download(self, signed_url: str, file_path: str) -> None:
+        """
+        Download an image from a signed URL.
+
+        :param signed_url: The signed URL to download the image from.
+        :param file_path: The path to save the downloaded image.
+        """
+        try:
+            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+            self.logger.info(f"Saving image to {file_path}")
+        
+            
+            download_res = requests.get(signed_url, stream=True, verify=False)
+            if download_res.status_code != 200:
+                raise ValueError(f"Failed to download image from signed URL: {download_res.text}")
+
+            # Open the file in binary mode and write the image content
+            with open(file_path, "wb") as image_file:
+                for chunk in download_res.iter_content(chunk_size=1024):
+                    if chunk:
+                        image_file.write(chunk)
+
+            self.logger.info(f"Image successfully downloaded to {file_path}")
+    
+        except Exception as e:
+            self.logger.error(f"Error downloading image: {str(e)}")
+            raise
+
 

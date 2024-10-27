@@ -12,7 +12,6 @@ from app.setup import setup
 def main(
     job_id: int,
     tracer_id: str,
-    #TODO: enter  args
     work_dir: str,
     kp_auth_token: str,
     kp_host: str,
@@ -26,9 +25,9 @@ def main(
     logging.basicConfig(level=log_level)
 
   
-    if not all([job_id, tracer_id]): #TODO: put mandatory args here
-        logger.error(f"{job_id}: job_id, tracer_id, coordinates, and date range must all be set.") 
-        raise ValueError("job_id, tracer_id, coordinates, and date range must all be set.")
+    if not all([job_id, tracer_id]): 
+        logger.error(f"{job_id}: job_id, tracer_id must all be set.") 
+        raise ValueError("job_id, tracer_id must all be set.")
 
 
     kernel_planckster, protocol, file_repository = setup(
@@ -46,16 +45,13 @@ def main(
         file_repository=file_repository,
     )
 
-   
-
     augment(
         job_id=job_id,
         tracer_id=tracer_id,
         scraped_data_repository=scraped_data_repository,
         log_level=log_level,
         work_dir = work_dir,
-       
-
+        protocol=protocol,
     )
 
 
@@ -64,7 +60,7 @@ if __name__ == "__main__":
 
     import argparse
 
-    parser = argparse.ArgumentParser(description="Download data from MinIO.")
+    parser = argparse.ArgumentParser(description="Download data from MinIO for climate based augmentations.")
 
 
     parser.add_argument(
@@ -85,7 +81,7 @@ if __name__ == "__main__":
         "--log-level",
         type=str,
         default="WARNING",
-        help="The log level to use when running the scraper. Possible values are DEBUG, INFO, WARNING, ERROR, CRITICAL. Set to WARNING by default.",
+        help="The log level to use when running the pipeline. Possible values are DEBUG, INFO, WARNING, ERROR, CRITICAL. Set to WARNING by default.",
     )
 
 
@@ -138,7 +134,6 @@ if __name__ == "__main__":
         kp_host=args.kp_host,
         kp_port=args.kp_port,
         kp_scheme=args.kp_scheme,
-        #TODO: put args from parser here
     )
 
 

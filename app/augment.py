@@ -3,7 +3,7 @@ import logging
 from typing import List
 from app.sdk.models import KernelPlancksterSourceData, BaseJobState, JobOutput, ProtocolEnum
 from app.sdk.scraped_data_repository import ScrapedDataRepository,  KernelPlancksterSourceData
-import time
+from app.weather_API import *
 import os
 import json
 import pandas as pd
@@ -14,17 +14,20 @@ import numpy as np
 import shutil
 import cv2
 import tempfile
-
-# Load environment variables
-load_dotenv()
-
+import torch
+import torchvision.transforms as transforms
+from collections import Counter
+from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+import time
+from PIL import Image
 
 def augment(
     job_id: int,
     tracer_id: str,
     scraped_data_repository: ScrapedDataRepository,
     log_level: Logger,
-    work_dir: str
+    work_dir: str,
+    protocol:str,
 
 
 ) -> JobOutput:
@@ -42,43 +45,49 @@ def augment(
         job_state = BaseJobState.RUNNING
         #job.touch()
 
-        start_time = time.time()  # Record start time for response time measurement #TODO: decide wether we want this or not
+        start_time = time.time()  # Record start time for response time measurement 
         #Download all relevant files from minio
         kernel_planckster = scraped_data_repository.kernel_planckster
+        source_check = False   #make True if source list needs to be checked
+        # Get the source list
         source_list = kernel_planckster.list_all_source_data()
-        #print(f"Source List: {source_list}")
+        if source_check:
+            output_file = "source_list.txt"
+            with open(output_file, 'w') as file:
+                file.write("\n".join(map(str, source_list)))
+            print(f"Source list saved to {output_file}")      #to check the relative paths returned by MinIO
+        
 
 
         minimum_info = {"sentinel": False, "Webcam":False}
         try:
             for source in source_list:
-                    res = download_source_if_relevant(source, job_id, tracer_id, log_level, scraped_data_repository, work_dir) #resolved
+                    res = download_source_if_relevant(source, job_id, tracer_id, log_level, scraped_data_repository, work_dir) 
                     if res["sentinel"] == True: minimum_info["sentinel"] = True
                     elif res["Webcam"] == True: minimum_info["Webcam"] = True; 
+                    logger.info("Successfully downloaded")
         except Exception as e:
                 logger.warning(f"Download error : {e}")
         
     
         if minimum_info["sentinel"] == True and minimum_info["Webcam"]==True:
             try:
-                #augment_by_date(work_dir, job_id, scraped_data_repository, protocol) #not executing for now
+                augment_by_date(work_dir, job_id, scraped_data_repository, protocol)
+                logger.debug("Sentinel data augmented successfully")
+                augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol)
+                logger.debug("Webcam images augmented successfully")
                 job_state = BaseJobState.FINISHED
-                print("Successfully augmented")
+                shutil.rmtree(work_dir)
+                logger.info(f"Augmentation complete, successfully deleted {work_dir} directory")
             except Exception as e:
                 logger.error(f"Could not augment data. Error:{e}")   
-            
-            try:
-                shutil.rmtree(work_dir)
-                print(f"successfully deleted {work_dir} directory")
-            except Exception as e:
-                logger.warning("Could not delete tmp directory, exiting")
         else:
             logger.warning("Could not run augmentation, try again after running data pipeline for sentinel and webcam")
             try:
                 shutil.rmtree(work_dir)
-                print(f"successfully deleted {work_dir} directory")
+                logger.info(f"successfully deleted {work_dir} directory")
             except Exception as e:
-                logger.warning("Could not delete tmp directory, exiting")
+                logger.warning(f"Could not delete tmp directory due to {e}, exiting")
 
             
 
@@ -91,9 +100,7 @@ def augment(
             shutil.rmtree(work_dir)
             print(f"successfully deleted {work_dir} directory")
         except Exception as e:
-            logger.warning("Could not delete tmp directory, exiting")
-
-        #job.messages.append(f"CO_level: FAILED. Unable to scrape data. {e}")
+            logger.warning(f"Could not delete tmp directory due to {e}, exiting")
 
 
 def download_source_if_relevant(
@@ -119,35 +126,23 @@ def download_source_if_relevant(
     file_name = os.path.basename(relative_path)
 
     res = {"sentinel": False, "Webcam": False}
-    
     # Handle JSON downloads from Sentinel
     if "climate" in source_data.relative_path and os.path.splitext(source_data.relative_path)[1] == ".json":
         sentinel_coords_path = os.path.join(work_dir, "climate_coords", file_name)
         try:
             scraped_data_repository.download_json(source_data, job_id, sentinel_coords_path)
             res["sentinel"] = True
+            logger.debug("sentinel data download success")
         except FileNotFoundError:
             logger.error(f"File not found in MinIO: {relative_path}")
             return res
-    #TODO section : Not yet implemented
-    # Handle JSON downloads from Webcam/API-scraped
-    elif "Webcam/API-scraped" in source_data.relative_path and os.path.basename(source_data.relative_path) == "data.json":
-        twitter_coords_path = os.path.join(work_dir, "Webcam", file_name)
-        try:
-            scraped_data_repository.download_json(source_data, job_id, twitter_coords_path)
-            res["Webcam"] = True
-        except FileNotFoundError:
-            logger.error(f"File not found in MinIO: {relative_path}")
-            return res
-
-    # Handle image downloads from Webcam/scraped
-    elif "Webcam/scraped" in source_data.relative_path:
+    
+    elif "Webcam/1/1/scraped" in source_data.relative_path:
         image_save_path = os.path.join(work_dir, "Webcam", "scraped_images", file_name)
-        
         try:
-            # Assuming there's a method in scraped_data_repository to download images
             scraped_data_repository.download_image(source_data, job_id, image_save_path)
-            logger.info(f"Downloaded image to {image_save_path}")
+            res["Webcam"] = True
+            logger.debug(f"Downloaded image to {image_save_path}")
         except FileNotFoundError:
             logger.error(f"Image file not found in MinIO: {relative_path}")
             return res
@@ -155,7 +150,6 @@ def download_source_if_relevant(
     return res
 
 
-#TODO: needs to be redefined for image augmentations
 def augment_by_date(work_dir: str, job_id: int, scraped_data_repository: ScrapedDataRepository, protocol: ProtocolEnum):
     key = {
         "01": "January",
@@ -227,4 +221,71 @@ def augment_by_date(work_dir: str, job_id: int, scraped_data_repository: Scraped
             continue
         except Exception as e:
             logging.error(f"Error processing file {climate_coords_json_file_path}: {str(e)}")
+            continue
+
+def augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol):
+    # Configure logging
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level=log_level)
+    
+    webcam_dir = os.path.join(work_dir, "Webcam", "scraped_images")
+    combined_dir = os.path.join(work_dir, "combined")
+    os.makedirs(combined_dir, exist_ok=True)
+    
+    if not os.path.exists(webcam_dir):
+        logger.error(f"Webcam directory not found: {webcam_dir}")
+        return
+
+    model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
+    model.eval()
+    
+    for image_file in os.listdir(webcam_dir):
+        try:
+            image_path = os.path.join(webcam_dir, image_file)
+            date_from_filename = extract_date_from_filename(image_file)
+            latitude, longitude = extract_latitude_longitude_from_filename(image_file)
+            formatted_date = format_date(date_from_filename)
+            split_date = formatted_date.split("-")
+            
+            # Classify weather from the image
+            majority_weather_from_image = process_and_classify_weather(image_path, model)
+            
+            # Fetch and process weather data from API
+            response = fetch_weather_data(latitude=latitude, longitude=longitude,
+                                        start_date=formatted_date, end_date=formatted_date)
+            weather_condition = None
+            if response:
+                weather_data = process_weather_data(response)
+                if not weather_data.empty:
+                    weather_condition = get_weather_condition(weather_data)
+            
+            combined_filename = f"{split_date[0]}_{split_date[1]}_{split_date[2]}.json"
+            local_json_path = os.path.join(combined_dir, combined_filename)
+            save_results_to_json(
+                url=None,
+                date=date_from_filename,
+                latitude=latitude,
+                longitude=longitude,
+                weather={"from_image": majority_weather_from_image, "from_api": weather_condition},
+                filename=local_json_path
+            )
+            
+            if os.path.exists(local_json_path):
+                logger.info(f"File {local_json_path} created successfully.")
+            else:
+                logger.error(f"Failed to create file {local_json_path}")
+                continue
+            
+            source_data = KernelPlancksterSourceData(
+                name=combined_filename,
+                protocol=protocol,
+                relative_path=f"augmented/combined/{combined_filename}"
+            )
+            scraped_data_repository.register_scraped_json(
+                job_id=job_id,
+                source_data=source_data,
+                local_file_name=local_json_path,
+            )
+        except Exception as e:
+            logger.error(f"Failed to process image {image_file}: {e}")
             continue
