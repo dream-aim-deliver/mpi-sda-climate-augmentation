@@ -133,3 +133,18 @@ class ScrapedDataRepository:
                 )       
 
         return source_data
+    
+    def download_image(self, source_data: KernelPlancksterSourceData, job_id: int, file_path: str) -> KernelPlancksterSourceData:
+        
+        match self.protocol:
+            case ProtocolEnum.S3:
+                
+                signed_url = self.kernel_planckster.download_from_signed_url(source_data)
+            
+                self.logger.info(f"{job_id}: Downloading image from object store")
+            
+                self.file_repository.public_image_download(signed_url, file_path)
+            
+                self.logger.info(f"{job_id}: Downloaded image to {file_path}")
+    
+        return source_data
