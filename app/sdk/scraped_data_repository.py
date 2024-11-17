@@ -4,7 +4,6 @@ from app.sdk.kernel_plackster_gateway import KernelPlancksterGateway
 from app.sdk.models import KernelPlancksterSourceData, ProtocolEnum
 
 
-
 class ScrapedDataRepository:
     def __init__(
             self,

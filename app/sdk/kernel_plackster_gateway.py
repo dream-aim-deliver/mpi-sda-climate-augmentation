@@ -1,5 +1,4 @@
 import logging
-import json
 import httpx
 
 from app.sdk.models import KernelPlancksterSourceData
@@ -25,7 +24,11 @@ class KernelPlancksterGateway:
 
     def ping(self) -> bool:
         self.logger.info(f"Pinging Kernel Plankster Gateway at {self.url}")
-        res = httpx.get(f"{self.url}/ping")
+        try:
+            res = httpx.get(f"{self.url}/ping")
+        except Exception as e:
+            self.logger.error(f"Failed to ping Kernel Plankster Gateway at '{self.url}'. Error: {e}")
+            return False
         self.logger.info(f"Ping response: {res.text}")
         return res.status_code == 200
 
@@ -63,7 +66,7 @@ class KernelPlancksterGateway:
         signed_url = res_json.get("signed_url")
 
         if not signed_url:
-            raise ValueError(f"Failed to generate signed url. Signed URL not found in response. Dumping raw response:\n{res_json}")
+            raise ValueError(f"Failed to generate signed url. Signed URL not found in response. Dumping raw response:  {res_json}")
 
         return signed_url
     
@@ -148,7 +151,7 @@ class KernelPlancksterGateway:
         kp_source_data = res.json().get("source_data")
 
         if not kp_source_data:
-            raise ValueError(f"Failed to register new data. Source Data not returned. Dumping raw response:\n{res.json()}")
+            raise ValueError(f"Failed to register new data. Source Data not returned. Dumping raw response: {res.json()}")
 
         res_name = kp_source_data.get("name")
         res_protocol = kp_source_data.get("protocol")
@@ -198,7 +201,7 @@ class KernelPlancksterGateway:
         kp_list_sources = res.json().get("source_data_list")
 
         if not kp_list_sources:
-            raise ValueError(f"Failed to get Source Data list. You may not have scraped any data yet. Dumping raw response:\n{res.json()}")
+            raise ValueError(f"Failed to get Source Data list. You may not have scraped any data yet. Dumping raw response: {res.json()}")
         
       
         return kp_list_sources

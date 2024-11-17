@@ -3,27 +3,11 @@ import requests_cache
 import pandas as pd
 from retry_requests import retry
 from datetime import datetime
-from logging import Logger
-import logging
-from typing import List
-from app.sdk.models import KernelPlancksterSourceData, BaseJobState, JobOutput, ProtocolEnum
-from app.sdk.scraped_data_repository import ScrapedDataRepository,  KernelPlancksterSourceData
-from app.weather_API import *
-import os
 import json
 import pandas as pd
-from dotenv import load_dotenv
-from models import PipelineRequestModel
-from numpy import ndarray
-import numpy as np
-import shutil
-import cv2
-import tempfile
 import torch
 import torchvision.transforms as transforms
 from collections import Counter
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
-import time
 from PIL import Image
 
 
@@ -272,39 +256,45 @@ def map_to_weather_class(imagenet_class, last_weather=None):
 
 '''HELPER FUNCTIONS------------------------'''
 
-def format_date(date_str):
+def format_date(date_str: str) -> str | None:
     try:
         # Parse the date in "YY-MM-DD" format
         parsed_date = datetime.strptime(date_str, "%y-%m-%d")
         # Format it to "YYYY-MM-DD"
         return parsed_date.strftime("%Y-%m-%d")
+
     except ValueError as e:
-        print(f"Date formatting error: {e}")
+        print(f"Date formatting error for '{date_str}': {e}")
         return None
 
 
-def extract_latitude_longitude_from_filename(filename):
+def extract_latitude_longitude_from_filename(filename: str) -> tuple[str, str] | tuple[None, None]:
     try:
-        # "Webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png" example filename
+        # "webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png" example filename
         split_filename = filename.split("_")
         latitude = split_filename[2]
         longitude = split_filename[3]
     
         return latitude, longitude
     except Exception as e:
-        print(f"error : {e} , Check Image filename")
+        print(f"Couldn't extract latitude and longitude from filename '{filename}': {e}")
+        return None, None
     
-def extract_date_from_filename(filename):
+def extract_date_from_filename(filename: str) -> str | None:
     try:
-        # "Webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png"  example filename
+        # "webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png"  example filename
         split_filename = filename.split("_")
         year = split_filename[6]
         month = split_filename[5]
         day = split_filename[4]
-    
-        return f"{year}-{month}-{day}"
+        result = f"{year}-{month}-{day}" 
+        print(result)
+
+        return result
+
     except Exception as e:
-        print(f"error : {e} , Check Image filename")
+        print(f"Couldn't extract date from filename '{filename}': {e}")
+        return None
         
 
 
