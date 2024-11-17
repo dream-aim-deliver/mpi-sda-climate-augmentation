@@ -1,37 +1,28 @@
+from datetime import datetime
 from logging import Logger
 import logging
-from typing import List
+
+from pydantic import BaseModel
 from app.sdk.models import KernelPlancksterSourceData, BaseJobState, JobOutput, ProtocolEnum
 from app.sdk.scraped_data_repository import ScrapedDataRepository,  KernelPlancksterSourceData
 from app.weather_API import *
 import os
-import json
 import pandas as pd
-from dotenv import load_dotenv
-from models import PipelineRequestModel
-from numpy import ndarray
-import numpy as np
 import shutil
-import cv2
-import tempfile
-import torch
-import torchvision.transforms as transforms
-from collections import Counter
 from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
 import time
-from PIL import Image
+
+
 
 def augment(
+    case_study_name: str,
     job_id: int,
     tracer_id: str,
     scraped_data_repository: ScrapedDataRepository,
     log_level: Logger,
     work_dir: str,
     protocol:str,
-
-
 ) -> JobOutput:
-
 
     try:
         logger = logging.getLogger(__name__)
@@ -59,30 +50,49 @@ def augment(
         
 
 
-        minimum_info = {"sentinel": False, "Webcam":False}
+        minimum_info = {"sentinel": False, "webcam":False}
         try:
-            for source in source_list:
-                    res = download_source_if_relevant(source, job_id, tracer_id, log_level, scraped_data_repository, work_dir) 
-                    if res["sentinel"] == True: minimum_info["sentinel"] = True
-                    elif res["Webcam"] == True: minimum_info["Webcam"] = True; 
-                    logger.info("Successfully downloaded")
+            for source_data_as_raw_dictionary in source_list:
+                    res = download_source_if_relevant(
+                    source_data_as_raw_dictionary,
+                    case_study_name,
+                    tracer_id,
+                    job_id,
+                    log_level,
+                    scraped_data_repository,
+                    work_dir
+                    ) 
+
+                    if res["sentinel"] == True:
+                        minimum_info["sentinel"] = True
+
+                    elif res["webcam"] == True:
+                        minimum_info["webcam"] = True
+
+                    if minimum_info["sentinel"] == True or minimum_info["webcam"]==True:
+                        logger.info(f"Successfully downloaded {source_data_as_raw_dictionary}")
+
         except Exception as e:
                 logger.warning(f"Download error : {e}")
         
     
-        if minimum_info["sentinel"] == True and minimum_info["Webcam"]==True:
+        if minimum_info["sentinel"] == True and minimum_info["webcam"]==True:
             try:
                 augment_by_date(work_dir, job_id, scraped_data_repository, protocol)
                 logger.debug("Sentinel data augmented successfully")
                 augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol)
-                logger.debug("Webcam images augmented successfully")
+                logger.debug(" images augmented successfully")
                 job_state = BaseJobState.FINISHED
                 shutil.rmtree(work_dir)
                 logger.info(f"Augmentation complete, successfully deleted {work_dir} directory")
             except Exception as e:
                 logger.error(f"Could not augment data. Error:{e}")   
+
         else:
-            logger.warning("Could not run augmentation, try again after running data pipeline for sentinel and webcam")
+            sentinel_found = minimum_info["sentinel"]
+            webcam_found = minimum_info["webcam"]
+
+            logger.warning(f"Sentinel data found?: {sentinel_found}, Webcam data found?: {webcam_found}. Please retry once at least one of each is found. Last data source checked: {source_data_as_raw_dictionary}")
             try:
                 shutil.rmtree(work_dir)
                 logger.info(f"successfully deleted {work_dir} directory")
@@ -102,20 +112,96 @@ def augment(
         except Exception as e:
             logger.warning(f"Could not delete tmp directory due to {e}, exiting")
 
+class RelativePathMetadata(BaseModel):
+    case_study_name: str | None = None
+    tracer_id: str | None = None
+    job_id: int | None = None
+    timestamp: datetime | None = None
+    scraper_name: str | None = None
+    file_extension: str | None = None
+
+
+def parse_relative_path(relative_path: str) -> RelativePathMetadata:
+    """
+    A relative path has this shape: 
+    '{case_study_name}/{tracer_id}/{job_id}/{timestamp}/{scraper_name}/...'
+    or
+    '{case_study_name}/{tracer_id}/{job_id}/{scraper_name}_report/...'
+
+    Where timestamps are unix timestamps.
+    """
+    logger = logging.getLogger(__name__)
+    logging.basicConfig(level="INFO")
+
+    parts = relative_path.split("/")
+    if len(parts) < 4:
+        logger.warning(f"Relative path '{relative_path}' has less than 4 parts. Not attempting to parse.")
+        return RelativePathMetadata()
+
+    job_id_int = None
+    try:
+        job_id_int = int(parts[2])
+    except:
+        pass
+
+    timestamp_dt = None
+    try:
+        timestamp_dt = datetime.fromtimestamp(int(parts[3]))
+    except Exception as e:
+        logger.warning(f"Could not parse timestamp for relative path ' {relative_path}': {e}")
+
+    if timestamp_dt is None:
+        scraper_name = parts[3]
+    else:
+        scraper_name = parts[4].replace("_report", "")
+
+    file_extension = os.path.splitext(relative_path)[1]
+    
+    return RelativePathMetadata(
+        case_study_name=parts[0],
+        tracer_id=parts[1],
+        job_id=job_id_int,
+        timestamp=timestamp_dt,
+        scraper_name=scraper_name,
+        file_extension=file_extension
+    )
+
 
 def download_source_if_relevant(
-    source: KernelPlancksterSourceData,
-    job_id: int,
+    source_data_dict: dict[str, str],
+    case_study_name: str,
     tracer_id: str,
+    job_id: int,
     log_level: str,
     scraped_data_repository: ScrapedDataRepository,
     work_dir: str
-):
+) -> dict[str, bool]:
+
+    res = {"sentinel": False, "webcam": False}
+
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=log_level)
-    name = source["name"]
-    protocol = source["protocol"]
-    relative_path = source["relative_path"]
+    name = source_data_dict["name"]
+    protocol = source_data_dict["protocol"]
+    relative_path = source_data_dict["relative_path"]
+
+    try:
+        relative_path_metadata = parse_relative_path(relative_path)
+    except Exception as e:
+        raise ValueError(f"Could not parse relative path '{relative_path}': {e}")
+
+    source_data_case_study_name = relative_path_metadata.case_study_name
+    source_data_tracer_id = relative_path_metadata.tracer_id
+    source_data_job_id = relative_path_metadata.job_id
+    if (case_study_name, tracer_id, job_id) != (source_data_case_study_name, source_data_tracer_id, source_data_job_id):
+        return {"sentinel": False, "webcam": False}
+
+    file_extension = relative_path_metadata.file_extension
+    timestamp = relative_path_metadata.timestamp
+    scraper_name = relative_path_metadata.scraper_name
+
+    if scraper_name not in ["sentinel", "webcam"]:
+        return {"sentinel": False, "webcam": False}
 
     # Reconstruct the source_data object
     source_data = KernelPlancksterSourceData(
@@ -125,9 +211,10 @@ def download_source_if_relevant(
     )
     file_name = os.path.basename(relative_path)
 
-    res = {"sentinel": False, "Webcam": False}
+
     # Handle JSON downloads from Sentinel
-    if "climate" in source_data.relative_path and os.path.splitext(source_data.relative_path)[1] == ".json":
+    logger.info(f"parameters to match were: {file_extension}, {scraper_name}, {relative_path}")
+    if file_extension  == ".json" and "sentinel" in scraper_name and "augmented-coordinates" in relative_path:
         sentinel_coords_path = os.path.join(work_dir, "climate_coords", file_name)
         try:
             scraped_data_repository.download_json(source_data, job_id, sentinel_coords_path)
@@ -137,11 +224,11 @@ def download_source_if_relevant(
             logger.error(f"File not found in MinIO: {relative_path}")
             return res
     
-    elif "Webcam/1/1/scraped" in source_data.relative_path:
-        image_save_path = os.path.join(work_dir, "Webcam", "scraped_images", file_name)
+    elif timestamp is not None and scraper_name == "webcam":
+        image_save_path = os.path.join(work_dir, "webcam", "scraped_images", file_name)
         try:
             scraped_data_repository.download_image(source_data, job_id, image_save_path)
-            res["Webcam"] = True
+            res["webcam"] = True
             logger.debug(f"Downloaded image to {image_save_path}")
         except FileNotFoundError:
             logger.error(f"Image file not found in MinIO: {relative_path}")
@@ -223,17 +310,18 @@ def augment_by_date(work_dir: str, job_id: int, scraped_data_repository: Scraped
             logging.error(f"Error processing file {climate_coords_json_file_path}: {str(e)}")
             continue
 
+
 def augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol):
     # Configure logging
     logger = logging.getLogger(__name__)
     logging.basicConfig(level=log_level)
     
-    webcam_dir = os.path.join(work_dir, "Webcam", "scraped_images")
+    webcam_dir = os.path.join(work_dir, "webcam", "scraped_images")
     combined_dir = os.path.join(work_dir, "combined")
     os.makedirs(combined_dir, exist_ok=True)
     
     if not os.path.exists(webcam_dir):
-        logger.error(f"Webcam directory not found: {webcam_dir}")
+        logger.error(f" directory not found: {webcam_dir}")
         return
 
     model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
