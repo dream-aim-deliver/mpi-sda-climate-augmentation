@@ -268,12 +268,12 @@ def format_date(date_str: str) -> str | None:
         return None
 
 
-def extract_latitude_longitude_from_filename(filename: str) -> tuple[str, str] | tuple[None, None]:
+def extract_latitude_longitude_from_filename(filename: str) -> tuple[str, str] | tuple[None, None]:    #TODO:update
     try:
-        # "webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png" example filename
+        # "webcam__35.652832_139.839478_5e568898681458.46669392_15_09_24_climate_test.jpeg" example filename
         split_filename = filename.split("_")
-        latitude = split_filename[2]
-        longitude = split_filename[3]
+        latitude = split_filename[2] 
+        longitude = split_filename[3] 
     
         return latitude, longitude
     except Exception as e:
@@ -282,11 +282,11 @@ def extract_latitude_longitude_from_filename(filename: str) -> tuple[str, str] |
     
 def extract_date_from_filename(filename: str) -> str | None:
     try:
-        # "webcam__35.652832_139.839478_15_10_24_1729185796.5170758.png"  example filename
+        # "webcam__35.652832_139.839478_5e568898681458.46669392_15_09_24_climate_test.jpeg"  example filename
         split_filename = filename.split("_")
-        year = split_filename[6]
-        month = split_filename[5]
-        day = split_filename[4]
+        year = split_filename[7]
+        month = split_filename[6]
+        day = split_filename[5]
         result = f"{year}-{month}-{day}" 
         print(result)
 
@@ -296,9 +296,43 @@ def extract_date_from_filename(filename: str) -> str | None:
         print(f"Couldn't extract date from filename '{filename}': {e}")
         return None
         
+def extract_webcam_location(filename:str) -> str | None:
+    try:
+        split_filename = filename.split("_")
+        webcam_id = split_filename[4]
+        webcam_dict = {
+    "5e568898681458.46669392": "Argentina - Finca La Anita - Mendoza",
+    "5b3c79de7145a4.91097248": "Australia - Fremantle Ports - Fremantle Ports 1",
+    "5b3c7b6c59a9d2.69886482": "Australia - Fremantle Ports - Fremantle Ports 2",
+    "54ae54684746d3.82338131": "Australia - Symsol - Hotham",
+    "5e56831da4aca5.86170788": "Australia - Mount Buller - Pender guest hat - Mount Buller",
+    "56570ff06614d3.12405925": "Bosnia & Herzegovina - VIP Jahorina - Termag Hotel",
+    "5bed921d2345c8.82119321": "England - Headland Hotel - Headland Hotel & Spa",
+    "582431e6e60a55.13915440": "Finland - Flycam - Hiedanranta",
+    "59f9a595f18ee6.56669100": "Finland - Flycam - Lappeenranta – Vesitorni",
+    "5b86acc519a864.23015209": "Finland - Flycam - Rovaniemi Koivusaari",
+    "5ad845c78363f4.19658084": "Finland - Flycam - Rovaniemi Ounasvaara",
+    "5f998930a4d3a7.02030574": "France - Avoriaz - Groupe Arnéodo - Avoriaz Dreamland",
+    "59b6a5447623b9.86399130": "France - Bandol - Office de Tourisme - Office de Tourisme",
+    "57aae61df3c975.13953398": "France - Grau du Roi - Impérial - Centre Ville - Maison du Phare",
+    "543bb0f47b6784.33544709": "France - Serre Chevalier - Ratier",
+    "581c64c16ab941.38509337": "France - Val d'Isère - Village",
+    "61373586c8a715.78521672": "Germany - Berggasthof Königstuhl",
+    "59f99fbeccafc9.27967305": "Germany - Hörnerdörfer Tourismus - Balderschwang",
+    "56b895c6b08f57.71487130": "Germany - Mittagbahn",
+    "5587fc6b6112f0.27710113": "Germany - Schlosshotel Herrenchiemsee - Chiemsee",
+    "53ce6812a43508.11453786": "Germany - Eggensberger Hotel",
+    "6442a1cbd218f3.03638602": "Switzerland - BERNEXPO - Festhalle - A - Public",
+    "5c9b60f03df719.72602116": "Switzerland - Bredella AG - Buss Immobillien",
+    "53ce5956663437.97348915": "Switzerland - Belvedère Scuol Hotel - Belvedère - Scuol"
+}   
+        if webcam_id in webcam_dict:
+            return webcam_dict[webcam_id]
+    except Exception as error:
+        print(f"Error encountered while parsing location:{error}")
+        return None
 
-
-def save_results_to_json(url, date, latitude, longitude, weather, filename='results.json'):
+def save_results_to_json(url, date, latitude, longitude, weather, location, filename='results.json'):
     try:
         result = {
             "type": "Combined Dataset",
@@ -307,7 +341,8 @@ def save_results_to_json(url, date, latitude, longitude, weather, filename='resu
             "coordinates": {
                 "latitude": latitude,
                 "longitude": longitude
-            }
+            },
+            "Description": f"This is a picture showing the {weather} weather at {location} on {date} which was scraped and augmented through the climate pipeline.",
         }
 
         try:

@@ -75,7 +75,7 @@ def augment(
         except Exception as e:
                 logger.warning(f"Download error : {e}")
         
-    
+        
         if minimum_info["sentinel"] == True and minimum_info["webcam"]==True:
             try:
                 augment_by_date(work_dir, job_id, scraped_data_repository, protocol)
@@ -332,6 +332,7 @@ def augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol
             image_path = os.path.join(webcam_dir, image_file)
             date_from_filename = extract_date_from_filename(image_file)
             latitude, longitude = extract_latitude_longitude_from_filename(image_file)
+            location = extract_webcam_location(image_file)
             formatted_date = format_date(date_from_filename)
             split_date = formatted_date.split("-")
             
@@ -354,6 +355,7 @@ def augment_image(job_id, scraped_data_repository, log_level, work_dir, protocol
                 date=date_from_filename,
                 latitude=latitude,
                 longitude=longitude,
+                location=location,
                 weather={"from_image": majority_weather_from_image, "from_api": weather_condition},
                 filename=local_json_path
             )
