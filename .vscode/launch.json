@@ -1,0 +1,21 @@
+{
+    "configurations": [
+        {
+            "name": "Climate Time Travel",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/augment_main.py",
+            "console": "integratedTerminal",
+            "args": [
+              "--case-study-name=climate-monitoring",
+              "--tracer-id=potato",
+              "--job-id=2",
+              "--log-level=INFO",
+              "--kp-auth-token=test123",
+              "--kp-host=localhost",
+              "--kp-port=8000",
+              "--kp-scheme=http",
+            ]
+          },
+    ]
+}
