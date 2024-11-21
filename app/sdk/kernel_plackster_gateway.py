@@ -28,57 +28,19 @@ class KernelPlancksterGateway:
             res = httpx.get(f"{self.url}/ping")
         except Exception as e:
             self.logger.error(f"Failed to ping Kernel Plankster Gateway at '{self.url}'. Error: {e}")
-            return False
+            raise e
         self.logger.info(f"Ping response: {res.text}")
         return res.status_code == 200
 
-    def generate_signed_url(self, source_data: KernelPlancksterSourceData) -> str:
+    def generate_signed_url(self, source_data: KernelPlancksterSourceData, is_download_request: bool = False) -> str:
         if not self.ping():
             self.logger.error(f"Failed to ping Kernel Plankster Gateway at {self.url}")
             raise Exception("Failed to ping Kernel Plankster Gateway")
 
         self.logger.info(f"Generating signed url for {source_data.relative_path}")
 
-        endpoint = f"{self.url}/client/{self._client_id}/upload-credentials"
-
-        params = {
-            "protocol": source_data.protocol.value,
-            "relative_path": source_data.relative_path,
-        }
-
-        headers = {
-            "Content-Type": "application/json",
-            "x-auth-token": self._auth_token,
-            }
-
-        res = httpx.get(
-            url=endpoint,
-            params=params,
-            headers=headers,
-        )
-
-        self.logger.info(f"Generate signed url response: {res.text}")
-        if res.status_code != 200:
-            raise ValueError(f"Failed to generate signed url: {res.text}")
-
-        res_json = res.json()
-
-        signed_url = res_json.get("signed_url")
-
-        if not signed_url:
-            raise ValueError(f"Failed to generate signed url. Signed URL not found in response. Dumping raw response:  {res_json}")
-
-        return signed_url
-    
-    def download_from_signed_url(self, source_data: KernelPlancksterSourceData):
-
-        if not self.ping():
-            self.logger.error(f"Failed to ping Kernel Plankster Gateway at {self.url}")
-            raise Exception("Failed to ping Kernel Plankster Gateway")
-
-        self.logger.info(f"Generating signed url for {source_data.relative_path}")
-
-        endpoint = f"{self.url}/client/{self._client_id}/download-credentials"
+        endpoint_root = f"{self.url}/client/{self._client_id}"
+        endpoint = f"{endpoint_root}/download-credentials" if is_download_request else f"{endpoint_root}/upload-credentials"
 
         params = {
             "protocol": source_data.protocol.value,
@@ -108,6 +70,7 @@ class KernelPlancksterGateway:
             raise ValueError(f"Failed to generate signed url. Signed URL not found in response. Dumping raw response:\n{res_json}")
 
         return signed_url
+        
 
     def register_new_source_data(self, source_data: KernelPlancksterSourceData) -> dict[str, str]:
         """
@@ -151,7 +114,7 @@ class KernelPlancksterGateway:
         kp_source_data = res.json().get("source_data")
 
         if not kp_source_data:
-            raise ValueError(f"Failed to register new data. Source Data not returned. Dumping raw response: {res.json()}")
+            raise ValueError(f"Failed to register new data. Source Data not returned. Dumping raw response:\n{res.json()}")
 
         res_name = kp_source_data.get("name")
         res_protocol = kp_source_data.get("protocol")
@@ -163,22 +126,13 @@ class KernelPlancksterGateway:
         assert res_name == source_data.name
 
         return kp_source_data
-    
 
-    def list_all_source_data(self):
-        """
-        Registers new source data with Kernel Plankster Gateway.
-        
-        Args:
-        - source_data: KernelPlancksterSourceData
-
-        """
+    def list_source_data(self, relative_path_root: str) -> list[KernelPlancksterSourceData]:
         if not self.ping():
             self.logger.error(f"Failed to ping Kernel Plankster Gateway at {self.url}")
             raise Exception("Failed to ping Kernel Plankster Gateway")
 
-        self.logger.info(f"Listing all data with Kernel Plankster Gateway at {self.url}")
-
+        self.logger.info(f"Listing source with Kernel Plankster Gateway at {self.url}")
 
 
         endpoint = f"{self.url}/client/{self._client_id}/source"
@@ -193,17 +147,27 @@ class KernelPlancksterGateway:
             headers=headers,
         )
 
+        self.logger.info(f"List source data response: {res.text}")
         if res.status_code != 200:
             raise ValueError(
-                f"Failed to list all sources with Kernel Plankster Gateway: {res.text}"
+                f"Failed to list source data with Kernel Plankster Gateway: {res.text}"
             )
 
-        kp_list_sources = res.json().get("source_data_list")
+        kp_source_data = res.json()
 
-        if not kp_list_sources:
-            raise ValueError(f"Failed to get Source Data list. You may not have scraped any data yet. Dumping raw response: {res.json()}")
+        if not kp_source_data:
+            raise ValueError(f"Failed to list source data. Source Data not returned. Dumping raw response:\n{res.json()}")
+
+        if not kp_source_data['status']:
+            raise ValueError(f"Failed to list source data. Source Data status not returned. Dumping raw response:\n{res.json()}")
         
-      
-        return kp_list_sources
-
-
+        kp_source_data = kp_source_data.get("source_data_list")
+        output: list[KernelPlancksterSourceData] = [
+            KernelPlancksterSourceData(
+                name=x.get("name"),
+                protocol=x.get("protocol"),
+                relative_path=x.get("relative_path"),
+            ) for x in kp_source_data
+            if x.get("relative_path").startswith(relative_path_root)
+        ]
+        return output

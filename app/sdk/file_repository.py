@@ -59,8 +59,6 @@ class FileRepository:
         return pfn
 
         
-
-
     def public_upload(self, signed_url: str, file_path: str) -> None:
         """
         Upload a file to a signed url.
@@ -70,54 +68,34 @@ class FileRepository:
         """
 
         with open(file_path, "rb") as f:
-            upload_res = requests.put(signed_url, data=f,verify=False)
+            upload_res = requests.put(signed_url, data=f, verify=False)
 
+        self.logger.info(f"Uploaded file to signed url: {signed_url}")
+        self.logger.info(f"Upload response: {upload_res.text}")
+        self.logger.info(f"Upload status code: {upload_res.status_code}")
+        self.logger.info(f"Upload headers: {upload_res.headers}")
+        
         if upload_res.status_code != 200:
             raise ValueError(f"Failed to upload file to signed url: {upload_res.text}")
+        
 
     def public_download(self, signed_url: str, file_path: str) -> None:
-            """
-            download a file from a signed url.
-
-            :param signed_url: The signed url to upload to.
-            :param file_path: The path to the file to upload.
-                """
-  
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            print(os.path.dirname(file_path))
-            with open(file_path, "wb") as f:
-                download_res = requests.get(signed_url, verify=False)
-                f.write(download_res.content)
-
-            if download_res.status_code != 200:
-                raise ValueError(f"Failed to download file from signed url: {download_res.text}")
-    
-    def public_image_download(self, signed_url: str, file_path: str) -> None:
         """
-        Download an image from a signed URL.
+        Download a file from a signed url.
 
-        :param signed_url: The signed URL to download the image from.
-        :param file_path: The path to save the downloaded image.
+        :param signed_url: The signed url to download from.
+        :param file_path: The path to save the downloaded file.
         """
-        try:
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
-            self.logger.info(f"Saving image to {file_path}")
+
+        download_res = requests.get(signed_url, verify=False)
+
+        self.logger.info(f"Downloaded file from signed url: {signed_url}")
+        self.logger.info(f"Download status code: {download_res.status_code}")
+        self.logger.info(f"Download headers: {download_res.headers}")
+
+        with open(file_path, "wb") as f:
+            f.write(download_res.content)
         
-            
-            download_res = requests.get(signed_url, stream=True, verify=False)
-            if download_res.status_code != 200:
-                raise ValueError(f"Failed to download image from signed URL: {download_res.text}")
-
-            # Open the file in binary mode and write the image content
-            with open(file_path, "wb") as image_file:
-                for chunk in download_res.iter_content(chunk_size=1024):
-                    if chunk:
-                        image_file.write(chunk)
-
-            self.logger.info(f"Image successfully downloaded to {file_path}")
-    
-        except Exception as e:
-            self.logger.error(f"Error downloading image: {str(e)}")
-            raise
-
+        if download_res.status_code != 200:
+            raise ValueError(f"Failed to download file from signed url: {download_res.text}")
 

@@ -4,6 +4,7 @@ from app.sdk.kernel_plackster_gateway import KernelPlancksterGateway
 from app.sdk.models import KernelPlancksterSourceData, ProtocolEnum
 
 
+
 class ScrapedDataRepository:
     def __init__(
             self,
@@ -16,34 +17,21 @@ class ScrapedDataRepository:
         self.file_repository = file_repository
         self._logger = logging.getLogger(__name__)
 
-    @property
-    def log_level(self) -> str:
-        return self._log_level
 
     @property
     def logger(self) -> logging.Logger:
-
         return self._logger
 
 
-    
-
     def register_scraped_photo(self, source_data: KernelPlancksterSourceData, job_id: int, local_file_name: str) -> KernelPlancksterSourceData:
-
         match self.protocol:
-
             case ProtocolEnum.S3:
-
                 signed_url = self.kernel_planckster.generate_signed_url(source_data=source_data) 
-                
                 self.logger.info(f"{job_id}: Uploading photo to object store")
-
                 self.file_repository.public_upload(signed_url, local_file_name)
-                
                 self.logger.info(
                 f"{job_id}: Uploaded photo to {signed_url}"
                 )
-
                 self.kernel_planckster.register_new_source_data(source_data=source_data)
 
 
@@ -57,6 +45,7 @@ class ScrapedDataRepository:
                 )                                    
 
         return source_data
+
 
     def register_scraped_video_or_document(self, source_data: KernelPlancksterSourceData, job_id: int, local_file_name: str) -> KernelPlancksterSourceData:
 
@@ -115,35 +104,26 @@ class ScrapedDataRepository:
 
         return source_data
     
-    def download_json(self, source_data: KernelPlancksterSourceData, job_id: int, file_path: str) -> KernelPlancksterSourceData:
+    def download_data(self, source_data: KernelPlancksterSourceData, local_file: str):
+        """
+        Download data from Kernel Plankster Gateway.
 
-        match self.protocol:
-
-            case ProtocolEnum.S3:
-
-                signed_url = self.kernel_planckster.download_from_signed_url(source_data)
-                
-                self.logger.info(f"{job_id}: Downloading json from object store")
-
-                self.file_repository.public_download(signed_url, file_path)
-                
-                self.logger.info(
-                f"{job_id}: Downloaded json to {file_path}"
-                )       
-
-        return source_data
-    
-    def download_image(self, source_data: KernelPlancksterSourceData, job_id: int, file_path: str) -> KernelPlancksterSourceData:
-        
+        Args:
+        - source_data: KernelPlancksterSourceData
+        - local_file: str
+        """
         match self.protocol:
             case ProtocolEnum.S3:
-                
-                signed_url = self.kernel_planckster.download_from_signed_url(source_data)
-            
-                self.logger.info(f"{job_id}: Downloading image from object store")
-            
-                self.file_repository.public_image_download(signed_url, file_path)
-            
-                self.logger.info(f"{job_id}: Downloaded image to {file_path}")
-    
-        return source_data
+                signed_url = self.kernel_planckster.generate_signed_url(source_data=source_data, is_download_request=True)
+                self.logger.info(f"Downloading data from {signed_url}")
+                self.file_repository.public_download(signed_url, local_file)
+                self.logger.info(f"Downloaded data to {local_file}")
+            case ProtocolEnum.LOCAL:
+                # If local, then we don't use kernel planckster at all
+                # NOTE: local is deprecated
+                self.file_repository.save_file_locally(
+                    file_to_save=local_file,
+                    source_data=source_data,
+                    file_type="data",
+                )
+        return local_file
