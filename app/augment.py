@@ -90,6 +90,8 @@ def augment(
                 file_extension,
             ) = parse_relative_path(relative_path=image_path)
             if evalscript_name == "webcam":
+                if "webcam" not in metadata.imageKinds:
+                    metadata.imageKinds.append("webcam")
                 img_to_append = Image(
                     relativePath=image_path,
                     kind="webcam",
@@ -97,6 +99,8 @@ def augment(
                 )
                 keyframe.images.append(img_to_append)
             else:
+                if evalscript_name not in metadata.imageKinds:
+                    metadata.imageKinds.append(evalscript_name)
                 img_to_append = Image(
                     relativePath=image_path,
                     kind=evalscript_name,
