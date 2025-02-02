@@ -4,6 +4,7 @@ attrs==24.2.0
 cattrs==24.1.2
 certifi==2024.8.30
 charset-normalizer==3.4.0
+clip
 filelock==3.16.1
 flatbuffers==24.3.25
 fsspec==2024.10.0
