@@ -86,7 +86,7 @@ def augment(
                 timestamp,
                 dataset,
                 evalscript_name,
-                _,
+                hash,
                 file_extension,
             ) = parse_relative_path(relative_path=image_path)
             if evalscript_name == "webcam":
@@ -97,11 +97,20 @@ def augment(
                 )
                 keyframe.images.append(img_to_append)
             else:
-                img_to_append = Image(
-                    relativePath=image_path,
-                    kind=evalscript_name,
-                    description=f"dataset: {dataset} | source: sentinel scraper",
-                )
+                if evalscript_name not in metadata.imageKinds:
+                    metadata.imageKinds.append(evalscript_name)
+                if hash == "empty":
+                    img_to_append = Image(
+                        relativePath=image_path,
+                        kind=evalscript_name,
+                        description=f"dataset: {dataset} | source: sentinel scraper | WARN: No Satellite Image Found",
+                    )
+                else:
+                    img_to_append = Image(
+                        relativePath=image_path,
+                        kind=evalscript_name,
+                        description=f"dataset: {dataset} | source: sentinel scraper",
+                    )
                 keyframe.images.append(img_to_append)
         
         if len(augmented_coordinates_path) != 1:
