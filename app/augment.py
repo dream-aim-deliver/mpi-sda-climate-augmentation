@@ -9,7 +9,8 @@ from app.sdk.scraped_data_repository import ScrapedDataRepository,  KernelPlanck
 from app.time_travel.models import ClimateRowSchema, KeyFrame, Metadata, Image, Error
 from app.utils import parse_relative_path
 from app.weather_API import fetch_weather_data, process_weather_data, get_weather_condition
-from torchvision.models import efficientnet_b0, EfficientNet_B0_Weights
+import torch
+import clip
 import random
 
 logger = logging.getLogger(__name__)
@@ -206,34 +207,59 @@ def augment(
         tracer_id=tracer_id,
         source_data_list=[out_source_data],
     )
-   
+
+
+
+def classify_weather(image_path: str) -> str:
+    """Classifies weather in an image using CLIP (Contrastive Language-Image Pretraining)."""
+    try:
+        # Load CLIP model and preprocessing function
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        model, preprocess = clip.load("ViT-B/32", device)
+        weather_prompts = ["sunny", "rainy", "cloudy", "snowy", "partly cloudy"]
+
+        
+        image = Image.open(image_path).convert("RGB")
+        image_input = preprocess(image).unsqueeze(0).to(device)
+        text_inputs = clip.tokenize(weather_prompts).to(device)  #tokenized weather prompts        
+        with torch.no_grad():
+            image_features = model.encode_image(image_input)
+            text_features = model.encode_text(text_inputs)
+
+        image_features /= image_features.norm(dim=-1, keepdim=True)
+        text_features /= text_features.norm(dim=-1, keepdim=True)
+
+        similarity = (image_features @ text_features.T).squeeze(0)
+
+        predicted_idx = similarity.argmax().item()    #similarity based matching
+        predicted_weather = weather_prompts[predicted_idx]
+
+        return predicted_weather
+
+    except Exception as e:
+        logging.error(f"Error processing image: {e}")
+        return "Unknown"
 
 def augment_image(image_path: str, latitude: str, longitude: str, timestamp: str) -> Tuple[str, str]:
-    # start date is the timestamp of the image, convert milliseconds to datetime
     formatted_date = datetime.fromtimestamp(int(timestamp)).strftime("%Y-%m-%d")
+    logging.basicConfig(level=logging.INFO)
 
-    # Configure logging
-    model = efficientnet_b0(weights=EfficientNet_B0_Weights.DEFAULT)
-    model.eval()
     try:
-        # Classify weather from the image
-        # majority_weather_from_image = process_and_classify_weather(image_path, model)
-        # Fetch and process weather data from API
+        predicted_weather_from_image = classify_weather(image_path)
+        
+        #API fetch
         response = fetch_weather_data(latitude=latitude, longitude=longitude,
                                     start_date=formatted_date, end_date=formatted_date)
         if response:
             weather_data = process_weather_data(response)
             if not weather_data.empty:
                 weather_condition = get_weather_condition(weather_data)
-        weather = ["Rainy" , "Sunny", "Cloudy", "Snowy", "Partly Cloudy"]
-        # randomly select a number between 1 and 5
-        random_weather_index = random.randint(0, 4)
-        if random_weather_index < 2:
-            predicted_weather = weather[random_weather_index]
         else:
-            predicted_weather = weather_condition
-                
-        return predicted_weather, weather_condition
+            weather_condition = "Unknown"  # No data from API
+
+        
+        return predicted_weather_from_image, weather_condition
+
     except Exception as e:
         logging.error(f"Error processing image: {e}")
         return "Error", "Error"
